@@ -1,0 +1,93 @@
+# Create the namespace for this deployment
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: abiotic-factor
+
+---  
+# Persistent Volume Claim for storing game data, this is based on an NFS backed Storage Class.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: abiotic-pvc
+  namespace: abiotic-factor
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: nfs-csi
+
+---
+# Deployment for the game server
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: abiotic-server
+  namespace: abiotic-factor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: abiotic-server
+  template:
+    metadata:
+      labels:
+        app: abiotic-server
+    spec:
+      containers:
+        - name: abiotic-server
+          image: ghcr.io/pleut/abiotic-factor-linux-docker:latest
+          ports:
+            - containerPort: 7777
+              protocol: UDP
+            - containerPort: 27015
+              protocol: UDP
+          env:
+            - name: MaxServerPlayers
+              value: "7"
+            - name: Port
+              value: "7777"
+            - name: QueryPort
+              value: "27015"
+            - name: ServerPassword
+              value: "CHANGE-ME"
+            - name: SteamServerName
+              value: "CHANGE-ME"
+            - name: UsePerfThreads
+              value: "true"
+            - name: NoAsyncLoadingThread
+              value: "false"
+            - name: WorldSaveName
+              value: "CHANGE-ME"
+          volumeMounts:
+            - name: gamefiles
+              mountPath: /server
+      volumes:
+        - name: gamefiles
+          persistentVolumeClaim:
+            claimName: abiotic-pvc
+        - name: data
+          persistentVolumeClaim:
+            claimName: abiotic-pvc
+---
+# Service to expose the game server
+apiVersion: v1
+kind: Service
+metadata:
+  name: abiotic-server
+  namespace: abiotic-factor
+spec:
+  selector:
+    app: abiotic-server
+  ports:
+    - name: game
+      protocol: UDP
+      port: 7777
+      targetPort: 7777
+    - name: query
+      protocol: UDP
+      port: 27015
+      targetPort: 27015
+  type: LoadBalancer
